@@ -10,3 +10,9 @@
 配置文件server.conf(可自行修改自己的配置)
 
 ![avatar](/img/show.gif)
+
+-  [CDto修改(使用iterm执行命令)](https://github.com/fguby/Alfred-workflows/blob/master/ftp.alfredworkflow/ "workflow")
+
+![avatar](/img/CDto.gif)
+
+[原地址](https://github.com/stidio/Alfred-Workflow "worklow")
