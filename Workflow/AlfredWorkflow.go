@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+//Alfred通知结构体
 type AlfredWorkflow struct {
 	Valid    string
 	Title    string
@@ -12,14 +13,17 @@ type AlfredWorkflow struct {
 	icon     string
 }
 
+//存放切片
 type Alfreds struct {
 	Arrs []AlfredWorkflow
 }
 
+//构造方法
 func New() *Alfreds {
 	return &Alfreds{}
 }
 
+//添加一组回显信息
 func (a *Alfreds) Add(valid, title, subtitle, icon string) {
 	alfred := AlfredWorkflow{
 		Valid:    valid,
@@ -31,6 +35,7 @@ func (a *Alfreds) Add(valid, title, subtitle, icon string) {
 
 }
 
+//展示所有的回显信息
 func (a *Alfreds) SendFeedback() {
 	var build strings.Builder
 	build.WriteString("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
