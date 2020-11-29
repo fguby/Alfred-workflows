@@ -1,0 +1,201 @@
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"strconv"
+	"strings"
+	"time"
+
+	ansi "github.com/k0kubun/go-ansi"
+	"github.com/pterm/pterm"
+	"github.com/schollz/progressbar/v3"
+)
+
+// Change this to time.Millisecond*200 to speed up the demo.
+// Useful when debugging.
+const second = time.Second
+
+var pseudoProgramList = strings.Split("pseudo-excel pseudo-photoshop pseudo-chrome pseudo-outlook pseudo-explorer "+
+	"pseudo-dops pseudo-git pseudo-vsc pseudo-intellij pseudo-minecraft pseudo-scoop pseudo-chocolatey", " ")
+
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+func main() {
+	fmt.Println()
+	introScreen()
+	clear()
+	pseudoApplicationHeader()
+	time.Sleep(second)
+	//printParsingResult()
+	time.Sleep(second * 2)
+	pterm.DefaultSection.WithLevel(2).Println("Program Install Report")
+	installedProgramsSize()
+	time.Sleep(second * 4)
+	pterm.DefaultSection.Println("Tree Printer")
+	installedTree()
+	time.Sleep(second * 4)
+	pterm.DefaultSection.Println("TrueColor Support")
+	//go fadeText()
+	time.Sleep(second)
+	pterm.DefaultSection.Println("Bullet List Printer")
+	listPrinter()
+}
+
+func installedTree() {
+	leveledList := pterm.LeveledList{
+		pterm.LeveledListItem{Level: 0, Text: "C:"},
+		pterm.LeveledListItem{Level: 1, Text: "Go"},
+		pterm.LeveledListItem{Level: 1, Text: "Windows"},
+		pterm.LeveledListItem{Level: 1, Text: "Programs"},
+	}
+	for _, s := range pseudoProgramList {
+		if s != "pseudo-minecraft" {
+			leveledList = append(leveledList, pterm.LeveledListItem{Level: 2, Text: s})
+		}
+		if s == "pseudo-chrome" {
+			leveledList = append(leveledList, pterm.LeveledListItem{Level: 3, Text: "pseudo-Tabs"})
+			leveledList = append(leveledList, pterm.LeveledListItem{Level: 3, Text: "pseudo-Extensions"})
+			leveledList = append(leveledList, pterm.LeveledListItem{Level: 4, Text: "Refined GitHub"})
+			leveledList = append(leveledList, pterm.LeveledListItem{Level: 4, Text: "GitHub Dark Theme"})
+			leveledList = append(leveledList, pterm.LeveledListItem{Level: 3, Text: "pseudo-Bookmarks"})
+			leveledList = append(leveledList, pterm.LeveledListItem{Level: 4, Text: "PTerm"})
+		}
+	}
+
+	pterm.DefaultTree.WithRoot(pterm.NewTreeFromLeveledList(leveledList)).Render()
+}
+
+func printParsingResult() {
+	for _, v := range pseudoProgramList {
+		pterm.Success.Printf("Parsing %s\n", v)
+	}
+}
+
+func installingPseudoList() {
+	pterm.DefaultSection.Println("Installing pseudo programs")
+
+	p, _ := pterm.DefaultProgressbar.WithTotal(80).WithTitle("Parsing flow").Start()
+	p.RemoveWhenDone = true
+	for i := 0; i < 80; i++ {
+		time.Sleep(350 * time.Millisecond)
+		p.Add(1)
+	}
+	p.Stop()
+}
+
+func listPrinter() {
+	pterm.NewBulletListFromString(`Good bye
+Have a nice day!`, " ").Render()
+}
+
+func fadeText(str string) {
+	from := pterm.NewRGB(0, 255, 255) // This RGB value is used as the gradients start point.
+	to := pterm.NewRGB(255, 0, 255)   // This RGB value is used as the gradients first point.
+
+	//str := "If your terminal has TrueColor support, you can use RGB colors!\nYou can even fade them :)"
+	strs := strings.Split(str, "")
+	var fadeInfo string // String which will be used to print info.
+	// For loop over the range of the string length.
+	for i := 0; i < len(str); i++ {
+		// Append faded letter to info string.
+		fadeInfo += from.Fade(0, float32(len(str)), float32(i), to).Sprint(strs[i])
+	}
+	pterm.Info.Println(fadeInfo)
+}
+
+func installedProgramsSize() {
+	d := pterm.TableData{{"Upg Name", "Status", "Errors", "Dir", "Env"}}
+	for _, s := range pseudoProgramList {
+		if s != "pseudo-minecraft" {
+			d = append(d, []string{s, pterm.LightGreen("pass"), strconv.Itoa(randomInt(7, 200)) + "mb", "CSP", "Mec"})
+		} else {
+			d = append(d, []string{pterm.LightRed(s), pterm.LightRed("fail"), "0mb", "CSP", "Mec"})
+		}
+	}
+	pterm.DefaultTable.WithHasHeader().WithData(d).Render()
+}
+
+func pseudoApplicationHeader() *pterm.TextPrinter {
+	return pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgLightBlue)).WithMargin(10).Println(
+		"Pseudo Application created with PTerm")
+}
+
+func introScreen() {
+	pterm.DefaultBigText.WithLetters(
+		pterm.NewLettersFromStringWithStyle("F", pterm.NewStyle(pterm.FgLightBlue)),
+		pterm.NewLettersFromStringWithStyle("ct", pterm.NewStyle(pterm.FgLightMagenta))).
+		Render()
+
+	pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgLightBlue)).WithMargin(10).Println(
+		"FCT - Flow Check Tool")
+
+	fadeText("This project is made by w30003432!" +
+		"\nFct works on nearly every terminal and operating system." +
+		"\nIt's super easy to use!" +
+		"\nIf you have any suggestions, feedback is welcome :)" +
+		"\nYou can see the code of this project in the https://github.com/pterm/pterm/tree/master/_examples/demo." +
+		"\n" +
+		"\nThis latest version of this project is: v1.0.0")
+	pterm.Println()
+	//introSpinner, _ := pterm.DefaultSpinner.WithRemoveWhenDone(true).Start("Please waiting a moment...")
+	//go printParsingResult()
+	//installingPseudoList()
+	task()
+	//test1()
+	time.Sleep(2 * second)
+	for i := 14; i > 0; i-- {
+		time.Sleep(second)
+	}
+	//introSpinner.Stop()
+}
+
+func clear() {
+	print("\033[H\033[2J")
+}
+
+// Slice of strings with placeholder text.
+var fakeInstallList = strings.Split("pseudo-excel pseudo-photoshop pseudo-chrome pseudo-outlook pseudo-explorer "+
+	"pseudo-dops pseudo-git pseudo-vsc pseudo-intellij pseudo-minecraft pseudo-scoop pseudo-chocolatey", " ")
+
+func test1() {
+	// Create progressbar as fork from the default progressbar.
+	p, _ := pterm.DefaultProgressbar.WithTotal(len(fakeInstallList)).WithTitle("Downloading stuff").Start()
+
+	for i := 0; i < p.Total; i++ {
+		p.Title = "Downloading " + fakeInstallList[i]              // Update the title of the progressbar.
+		pterm.Success.Println("Downloading " + fakeInstallList[i]) // If a progressbar is running, each print will be printed above the progressbar.
+		p.Increment()                                              // Increment the progressbar by one. Use Add(x int) to increment by a custom amount.
+		time.Sleep(time.Millisecond * 350)                         // Sleep 350 milliseconds.
+	}
+}
+
+func task() {
+	bar := progressbar.NewOptions(100,
+		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowBytes(false),
+		progressbar.OptionSetWidth(15),
+		progressbar.OptionSetDescription("[Fct][0/100][reset] Writing moshable file..."),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}))
+	for i := 0; i < 100; i++ {
+		bar.Describe(fmt.Sprintf("[Fct][%d/100][reset] Writing moshable file...", i+1))
+		bar.Add(1)
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+func randomInt(min, max int) int {
+	rand.Seed(time.Now().UnixNano())
+	return rand.Intn(max-min+1) + min
+}
+
