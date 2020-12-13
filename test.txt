@@ -1,71 +1,68 @@
-package main
+package xmlerr
 
-import (
-	"fmt"
-	prompt "github.com/c-bata/go-prompt"
-	"os"
-	"strings"
-	"time"
+import "fmt"
+
+var (
+	_ Build = (Path)(nil)
 )
 
-const (
-	Errors = "errs"
-	Warns = "warns"
-	Barriers = "barriers"
-	DirTree = "dir tree"
-	Exit = "exit"
-)
-
-var suggestions = []prompt.Suggest{
-	{Errors, "显示所有错误"},
-	{Warns, "显示所有告警"},
-	{Barriers, "显示所有栅栏信息"},
-	{DirTree, "展示文件树"},
-	{Exit, "退出程序"},
+type Build interface {
+	GetPath() Path
+	BuildPath() string
 }
 
-var history = make([]string, 0, 100)
-
-func completer(d prompt.Document) []prompt.Suggest {
-	w := d.GetWordBeforeCursor()
-	return prompt.FilterHasPrefix(suggestions, w, true)
+func (p Path) BuildPath() string {
+	return ""
 }
 
-func executor(in string) {
-	in = strings.TrimSpace(in)
-	blocks := strings.Split(in, " ")
-	switch blocks[0] {
-	case "exit":
-		fmt.Println("Bye!")
-		time.Sleep(1 * time.Second)
-		os.Exit(0)
-	default:
-		addHistory(in)
-		fmt.Printf("You choose: %s\n", in)
+func (p Path) GetPath() Path {
+	return p
+}
+
+type Path struct {
+	Ne    string
+	Pause string
+	Upg   string
+	Atom  string
+}
+
+type XMLErr struct {
+	err      error
+	errPath  Path
+	errLevel string
+	filePath string
+}
+
+func NewXMLErr(format string, v interface{}, a ...interface{}) XMLErr {
+	xe := XMLErr{}
+	if v != nil {
+		build, ok := v.(Build)
+		if ok {
+			xe.errPath = build.GetPath()
+		}
 	}
+	e := fmt.Errorf(format, a)
+	xe.err = e
+	// 默认错误级别
+	xe.errLevel = "Error"
+	return xe
 }
 
-func addHistory(cmd string) {
-	if len(history) >= 80 {
-		history = history[40:]
-	}
-	history = append(history, cmd)
+func (e XMLErr) SetLevel(level string) {
+	e.errLevel = level
 }
 
-func main() {
-	// Print a large text with differently colored letters.
-	//pterm.DefaultBigText.WithLetters(
-	//	pterm.NewLettersFromStringWithStyle("H", pterm.NewStyle(pterm.FgCyan)),
-	//	pterm.NewLettersFromStringWithStyle("uawei", pterm.NewStyle(pterm.FgLightMagenta))).
-	//	Render()
-	fmt.Println("Please enter command.")
-	p := prompt.New(
-		executor,
-		completer,
-		prompt.OptionPrefix("FlowCheck>"),
-		prompt.OptionTitle("flow-check"),
-		prompt.OptionHistory(history),
-		prompt.OptionPrefixTextColor(prompt.Purple),
-	)
-	p.Run()
+// Error 返回错误信息
+func (e XMLErr) Error() string {
+	return ""
+}
+
+// ErrorWithColor cli程序返回带高亮色彩的错误信息
+func (e XMLErr) ErrorWithColor() string {
+	return ""
+}
+
+// buildPathStr 转化err的归属路径信息
+func (e XMLErr) buildPathStr() string {
+	return e.errPath.BuildPath()
 }
