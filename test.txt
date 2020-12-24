@@ -21,6 +21,8 @@ type TreeMap struct {
 
 	//
 	maxAlign int
+
+	aligns int
 }
 
 type Tree struct {
@@ -38,6 +40,12 @@ type Tree struct {
 }
 
 func test(key int, path [][]int) {
+	treeMap := TreeMap{
+		child:    make(map[int]*Tree, len(path)),
+		parent:   make(map[int]*Tree, len(path)),
+		minAlign: 0,
+		maxAlign: 0,
+	}
 	root := NewTree(len(path[0]) - 2)
 	root.root = key
 	rootChild := make([]int, 0, len(path[0])-2)
@@ -45,12 +53,24 @@ func test(key int, path [][]int) {
 		if c == 1 {
 			rootChild = append(rootChild, c)
 			// TreeMap.paren[c] = root
+			treeMap.parent[c] = root
 		}
 	}
-	//TreeMap.min = len(rootChild)
+	// 当前分裂成了N行
+	treeMap.aligns += len(rootChild)
 	root.childData = rootChild
 	//
-	// 判断是否有兄弟节点间存在相互引用
+	curAtom := NewTree(len(path[2])-2)
+	curAtom.root = 2
+	child := path[2]
+	for _, v := range child {
+		if curParent, ok := treeMap.parent[v]; ok {
+			if v - curParent.root > v - curAtom.root {
+				treeMap.parent[v] = curAtom
+				treeMap.aligns--
+			}
+		}
+	}
 }
 
 func NewTree(n int) *Tree {
