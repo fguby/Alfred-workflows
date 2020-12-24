@@ -1,68 +1,62 @@
-package xmlerr
+package main
 
-import "fmt"
-
-var (
-	_ Build = (Path)(nil)
+import (
+	"fmt"
 )
 
-type Build interface {
-	GetPath() Path
-	BuildPath() string
+func main() {
+	e1 := fmt.Errorf("%s %d %s", "2", 1, "1")
+	fmt.Println(e1.Error())
 }
 
-func (p Path) BuildPath() string {
-	return ""
+type TreeMap struct {
+	// 根据key值存储对应的树
+	child  map[int]*Tree
+
+	// 存储某个key值的节点当前被挂在的对应子树
+	parent map[int]*Tree
+
+	//
+	minAlign int
+
+	//
+	maxAlign int
 }
 
-func (p Path) GetPath() Path {
-	return p
+type Tree struct {
+	// 父亲节点
+	root int
+
+	// 子节点
+	childMap map[int]int
+
+	// 子节点数据
+	childData []int
+
+	// 当前竖行 以0行为起始，不断减值
+	alignLine int
 }
 
-type Path struct {
-	Ne    string
-	Pause string
-	Upg   string
-	Atom  string
-}
-
-type XMLErr struct {
-	err      error
-	errPath  Path
-	errLevel string
-	filePath string
-}
-
-func NewXMLErr(format string, v interface{}, a ...interface{}) XMLErr {
-	xe := XMLErr{}
-	if v != nil {
-		build, ok := v.(Build)
-		if ok {
-			xe.errPath = build.GetPath()
+func test(key int, path [][]int) {
+	root := NewTree(len(path[0]) - 2)
+	root.root = key
+	rootChild := make([]int, 0, len(path[0])-2)
+	for _, c := range path[1] {
+		if c == 1 {
+			rootChild = append(rootChild, c)
+			// TreeMap.paren[c] = root
 		}
 	}
-	e := fmt.Errorf(format, a)
-	xe.err = e
-	// 默认错误级别
-	xe.errLevel = "Error"
-	return xe
+	//TreeMap.min = len(rootChild)
+	root.childData = rootChild
+	//
+	// 判断是否有兄弟节点间存在相互引用
 }
 
-func (e XMLErr) SetLevel(level string) {
-	e.errLevel = level
-}
-
-// Error 返回错误信息
-func (e XMLErr) Error() string {
-	return ""
-}
-
-// ErrorWithColor cli程序返回带高亮色彩的错误信息
-func (e XMLErr) ErrorWithColor() string {
-	return ""
-}
-
-// buildPathStr 转化err的归属路径信息
-func (e XMLErr) buildPathStr() string {
-	return e.errPath.BuildPath()
+func NewTree(n int) *Tree {
+	return &Tree{
+		childMap:  make(map[int]int, n),
+		childData: make([]int, 0, n),
+		alignLine: 0,
+	}
 }
