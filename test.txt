@@ -1,82 +1,191 @@
-package main
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <script src="/view/go.js"></script>
+    <link rel='stylesheet' href='/view/ZommSlider.css' />
+    <script src="/view/ZommSlider.js"></script>
+</head>
+<script>
+    window.onload = function () {
+        // For conciseness. See the "Building Parts" intro page for more
+        var $ = go.GraphObject.make;
 
-import (
-	"fmt"
-)
+        var diagram = $(go.Diagram, 'myDiagramDiv', {
+            initialContentAlignment: go.Spot.TopCenter,
+            allowDrop: false,
+            allowMove: false,
+            allowSelect: false,
+            layout: $(go.TreeLayout, {
+                commentMargin: 40,
+                angle: 90,
+                setsPortSpot: false,
+                setsChildPortSpot: false,
+            }),
+        });
 
-func main() {
-	e1 := fmt.Errorf("%s %d %s", "2", 1, "1")
-	fmt.Println(e1.Error())
-}
+        // the node template describes how each Node should be constructed
+        diagram.nodeTemplate =
+            $(go.Node, "Auto",
+                $(go.Shape,
+                    new go.Binding("width", "width"),
+                    new go.Binding("strokeWidth", "stroke"),
+        new go.Binding("figure", "fig"),
+                    new go.Binding("fill", "color")),
+                $(go.TextBlock,
+                    {
+                        margin: 5,
+                        //alignment: go.Spot.MiddleBottom
+                    },
+                    new go.Binding("background", "background"),
+                    new go.Binding("font", "font"),
+                    new go.Binding("width", "textWidth"),
+                    new go.Binding("row", "row"),
+                    new go.Binding("height", "textHeight"),
+                    new go.Binding("text", "key"))
+            );
 
-type TreeMap struct {
-	// 根据key值存储对应的树
-	child  map[int]*Tree
+        diagram.nodeTemplateMap.add("Comment",
+            $(go.Node,
+                {
+                    background: "black",
+                },
+                $(go.TextBlock,
+                    {
+                        stroke: "white",
+                        margin: 3
+                    },
+                    new go.Binding("text"))
+            ));
 
-	// 存储某个key值的节点当前被挂在的对应子树
-	parent map[int]*Tree
 
-	//
-	minAlign int
+        diagram.linkTemplate =
+            $(go.Link,
+                {
+                    routing: go.Link.AvoidsNodes,
+                    corner: 5,
+                    fromShortLength: 0,
+                    toEndSegmentLength: 80,
+                },
+                new go.Binding("fromSpot", "fromSpot", go.Spot.parse),
+                new go.Binding("toSpot", "toSpot", go.Spot.parse),
+                $(go.Shape),                           // this is the link shape (the line)
+                $(go.Shape, { toArrow: "Standard" }),  // this is an arrowhead
+                $(go.TextBlock,                        // this is a Link label
+                    new go.Binding("text", "text"))
+            );
 
-	//
-	maxAlign int
+        diagram.linkTemplateMap.add("Comment",
+            // if the BalloonLink class has been loaded from the Extensions directory, use it
+            $(go.Link,
+                $(go.Shape),  // the link shape
+                $(go.Shape,{
+                    stroke: "gray",
+                    strokeWidth: 3,
+                    toArrow: "Standard"
+                })
+            ));
 
-	aligns int
-}
+        // the Model holds only the essential information describing the diagram
+        diagram.model = new go.GraphLinksModel(
+            [ // a JavaScript Array of JavaScript objects, one per node;
+                // the "color" property is added specifically for this app
+                { key: "START_VNFD_UPG", color: "lightblue", loc: new go.Point(0, 0), fig: "RoundedRectangle"},
+                { key: "IF_MEC", color: "orange", loc: new go.Point(20, 60), fig: "RoundedRectangle"},
+                { key: "IF_MANY_STACK", color: "lightgreen", loc: new go.Point(0, 120), fig: "RoundedRectangle" },
+                { key: "FlowEnd1", color: "pink", loc: new go.Point(20, 180), fig: "RoundedRectangle" },
+                { key: "FlowEnd2", color: "pink", loc: new go.Point(0, 240), fig: "RoundedRectangle" },
+                { key: "FlowEnd3", color: "pink", loc: new go.Point(0, 300), fig: "MinusLine", font: "bold 14pt serif",
+                    textWidth: 200, textHeight: 50, stroke: 3, width: 200},
+                {key:"A comment", text:"NULL_WAIT_PAASCORE_UPGRADE", category:"Comment"},
+                { key: "FlowEnd4", color: "pink", loc: new go.Point(0, 360), fig: "RoundedRectangle" },
+                { key: "FlowEnd5", color: "pink", loc: new go.Point(0, 420), fig: "RoundedRectangle" }
+            ],
+            [ // a JavaScript Array of JavaScript objects, one per link
+                {from:"A comment", to:"FlowEnd3", category:"Comment"},
+                { from: "START_VNFD_UPG", to: "IF_MEC"},
+                { from: "IF_MEC", to: "IF_MANY_STACK"},
+                { from: "IF_MEC", to: "FlowEnd1", fromSpot: "Left", toSpot: "Left", text: "STACK_COUNT=1"},
+                { from: "IF_MANY_STACK", to: "FlowEnd1" },
+                { from: "FlowEnd1", to: "FlowEnd2" },
+                { from: "FlowEnd2", to: "FlowEnd3" },
+                { from: "FlowEnd3", to: "FlowEnd4" },
+                { from: "FlowEnd4", to: "FlowEnd5" },
+            ]);
 
-type Tree struct {
-	// 父亲节点
-	root int
+        // enable Ctrl-Z to undo and Ctrl-Y to redo
+        diagram.undoManager.isEnabled = true;
+        zoomSlider = new ZoomSlider(diagram);
+        diagram.links.each(function(node) {
+            debugger;
+            if (node.lb.hasOwnProperty("category")) {
+                node.opacity = 0
+                console.log("hide");
+            }
+        });
+        diagram.nodes.each(function(node) {
+            if (node.lb.hasOwnProperty("category")) {
+                node.opacity = 1
+            }
+        })
+        // diagram.nodeTemplate =
+        //     $(go.Node, "Auto",
+        //         $(go.Shape, "RoundedRectangle", { strokeWidth: 0 },
+        //             new go.Binding("fill", "color")),
+        //         $(go.TextBlock,
+        //             { margin: 8 },
+        //             new go.Binding("text", "key"))
+        //     );
+        //
+        // diagram.linkTemplate =
+        //     $(go.Link,
+        //         {routing: go.Link.AvoidsNodes},
+        //         $(go.Shape, { strokeWidth: 2 }),
+        //         // The label
+        //         $(go.Shape, "Circle", { segmentIndex: 0, width: 15, height: 15, fill: 'red', strokeWidth: 2 })
+        //     );
+        //
+        // diagram.model = new go.GraphLinksModel(
+        //     [
+        //         { key: "Alpha", color: "lightblue" },
+        //         { key: "Gamma", color: "lightgreen" },
+        //         { key: "Delta", color: "pink" }
+        //     ],
+        //     [
+        //         { from: "Alpha", to: "Gamma" },
+        //         // { from: "Gamma", to: "Delta" },
+        //         { from: "Alpha", to: "Delta" }
+        //     ]);
+        //
+        //
+        // // This presumes the object to be animated is a label within a Link
+        // go.AnimationManager.defineAnimationEffect('fraction',
+        //     function(obj, startValue, endValue, easing, currentTime, duration, animation) {
+        //         obj.segmentFraction = easing(currentTime, startValue, endValue - startValue, duration);
+        //     });
+        //
+        //
+        // window.animateColorAndFraction = function() {
+        //     // create one Animation for each link, so that they have independent durations
+        //     diagram.links.each(function(node) {
+        //         var animation = new go.Animation()
+        //         animation.add(node.elt(1), "fill", node.elt(0).fill, go.Brush.randomColor());
+        //         animation.add(node.elt(1), "fraction", 0, 1);
+        //         animation.duration = 1000 + (Math.random()*2000);
+        //         animation.reversible = true; // Re-run backwards
+        //         animation.runCount = Infinity; // Animate forever
+        //         animation.start();
+        //     });
+        // }
+    }
+</script>
+<script>goCode("animate3", 600, 200)</script>
 
-	// 子节点
-	childMap map[int]int
-
-	// 子节点数据
-	childData []int
-
-	// 当前竖行 以0行为起始，不断减值
-	alignLine int
-}
-
-func test(key int, path [][]int) {
-	treeMap := TreeMap{
-		child:    make(map[int]*Tree, len(path)),
-		parent:   make(map[int]*Tree, len(path)),
-		minAlign: 0,
-		maxAlign: 0,
-	}
-	root := NewTree(len(path[0]) - 2)
-	root.root = key
-	rootChild := make([]int, 0, len(path[0])-2)
-	for _, c := range path[1] {
-		if c == 1 {
-			rootChild = append(rootChild, c)
-			// TreeMap.paren[c] = root
-			treeMap.parent[c] = root
-		}
-	}
-	// 当前分裂成了N行
-	treeMap.aligns += len(rootChild)
-	root.childData = rootChild
-	//
-	curAtom := NewTree(len(path[2])-2)
-	curAtom.root = 2
-	child := path[2]
-	for _, v := range child {
-		if curParent, ok := treeMap.parent[v]; ok {
-			if v - curParent.root > v - curAtom.root {
-				treeMap.parent[v] = curAtom
-				treeMap.aligns--
-			}
-		}
-	}
-}
-
-func NewTree(n int) *Tree {
-	return &Tree{
-		childMap:  make(map[int]int, n),
-		childData: make([]int, 0, n),
-		alignLine: 0,
-	}
-}
+<body>
+<div id="sample" style="position: relative;">
+    <div id="myDiagramDiv" style=" width:1000px; height:800px"></div>
+    <p><input id="animateColorAndFraction" type="button" onclick="animateColorAndFraction()" value="Animate Color and Segment Fraction" />
+</div>
+</body>
+</html>
