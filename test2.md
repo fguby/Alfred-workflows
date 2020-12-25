@@ -1,63 +1,91 @@
 ```
-package main
+.zoomSlider {
+    position: absolute;
+    padding: 0;
+    opacity: .75;
+    z-index: 99;
+    width: 125px;
+    height: 25px;
+    top: 0px;
+    left: 0px;
+}
 
-import (
-	"fmt"
-	"math/rand"
-	"time"
+.zoomButton {
+    display: inline-block;
+    vertical-align: top;
+    text-align: center;
+    padding: 0;
+    transition: opacity .2s;
+}
 
-	"github.com/vbauerster/mpb/v5"
-	"github.com/vbauerster/mpb/v5/decor"
-)
+.zoomRangeContainer {
+    display: inline-block;
+    vertical-align: top;
+    padding: 0;
+}
 
-func main() {
-	p := mpb.New()
-	max := 100 * time.Millisecond
-	name1 := fmt.Sprintf("[Fct][CSP] Parse ... ")
-	bar1 := p.AddBar(int64(50),
-		mpb.BarWidth(50),
-		mpb.PrependDecorators(
-			decor.Name(name1),
-			decor.CountersNoUnit("[%d/%d] ", decor.WCSyncWidth),
-			decor.EwmaETA(decor.ET_STYLE_MMSS, 0, decor.WCSyncWidth),
-		),
-		mpb.AppendDecorators(
-			decor.OnComplete(
-				decor.Percentage(), "done!",
-			),
-		),
-	)
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 0; i < 50; i++ {
-		start := time.Now()
-		time.Sleep(time.Duration(rng.Intn(10)+1) * max / 10)
-		bar1.SetCurrent(int64(i+1))
-		// we need to call DecoratorEwmaUpdate to fulfill ewma decorator's contract
-		bar1.DecoratorEwmaUpdate(time.Since(start))
-	}
+.zoomRangeInput {
+    margin: 0;
+    padding: 0;
+    outline: none;
+    transition: opacity .2s;
+    background: transparent;
+    -webkit-appearance: none;
+}
 
-	name2 := fmt.Sprintf("[Fct][CSP] Check ... ")
-	bar2 := p.AddBar(int64(77),
-		mpb.BarWidth(50),
-		mpb.PrependDecorators(
-			decor.Name(name2),
-			decor.CountersNoUnit("[%d/%d] ", decor.WCSyncWidth),
-			decor.EwmaETA(decor.ET_STYLE_MMSS, 0, decor.WCSyncWidth),
-		),
-		mpb.AppendDecorators(
-			decor.OnComplete(
-				decor.Percentage(), "done!",
-			),
-		),
-	)
-
-	for i := 0; i < 77; i++ {
-		start := time.Now()
-		time.Sleep(time.Duration(rng.Intn(10)+1) * max / 10)
-		bar2.SetCurrent(int64(i+1))
-		// we need to call DecoratorEwmaUpdate to fulfill ewma decorator's contract
-		bar2.DecoratorEwmaUpdate(time.Since(start))
-	}
-	time.Sleep(1 * time.Minute)
+/* Set up additional styling to ensure consistenty across browsers */
+.zoomRangeInput::-webkit-slider-runnable-track {
+    box-sizing: border-box;
+    border: none;
+    width: 100%;
+    height: 3px;
+    background: #ccc;
+}
+.zoomRangeInput::-moz-range-track {
+    box-sizing: border-box;
+    border: none;
+    width: 100%;
+    height: 3px;
+    background: #ccc;
+}
+.zoomRangeInput::-ms-track {
+    box-sizing: border-box;
+    border: none;
+    width: 100%;
+    height: 3px;
+    background: #ccc;
+    color: transparent;
+}
+.zoomRangeInput::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    margin-top: -3.33px;
+    box-sizing: border-box;
+    border: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #444;
+}
+.zoomRangeInput::-moz-range-thumb {
+    box-sizing: border-box;
+    border: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #444;
+}
+.zoomRangeInput::-ms-thumb {
+    margin-top: 0;
+    box-sizing: border-box;
+    border: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #444;
+}
+.zoomRangeInput::-ms-tooltip,
+.zoomRangeInput::-ms-fill-lower,
+.zoomRangeInput::-ms-fill-upper {
+    display: none;
 }
 ```
