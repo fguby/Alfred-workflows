@@ -1,201 +1,466 @@
-package main
+'use strict';
+/*
+*  Copyright (C) 1998-2020 by Northwoods Software Corporation. All Rights Reserved.
+*/
 
-import (
-	"fmt"
-	"math/rand"
-	"strconv"
-	"strings"
-	"time"
+/**
+ * This class implements a zoom slider for GoJS diagrams.
+ * The constructor takes two arguments:
+ *   - `diagram` ***Diagram*** a reference to a GoJS Diagram
+ *   - `options` ***Object*** an optional JS Object describing options for the slider
+ *
+ * Options:
+ *   - `alignment` ***Spot*** see {@link #alignment}
+ *   - `alignmentFocus` ***Spot*** see {@link #alignmentFocus}
+ *   - `size` ***number*** see {@link #size}
+ *   - `buttonSize` ***number*** see {@link #buttonSize}
+ *   - `orientation` ***string*** see {@link #orientation}
+ *   - `opacity` ***number*** see {@link #opacity}
+ *
+ * Example usage of ZoomSlider:
+ * ```js
+ * var zoomSlider = new ZoomSlider(myDiagram,
+ *   {
+ *     alignment: go.Spot.TopRight, alignmentFocus: go.Spot.TopRight,
+ *     size: 150, buttonSize: 30, orientation: 'horizontal'
+ *   });
+ * ```
+ *
+ * This is the basic HTML Structure that the ZoomSlider creates as a sibling div of the diagram:
+ * ```html
+ * <div class="zoomSlider">
+ *   <button id="zoomSliderOut" class="zoomButton">-</button>
+ *   <div id="zoomSliderRangeCtn" class="zoomRangeContainer">
+ *     <input id="zoomSliderRange" class="zoomRangeInput" type="range" min="-50" max="100">
+ *   </div>
+ *   <button id="zoomSliderIn" class="zoomButton">+</button>
+ * </div>
+ * ```
+ *
+ * <p class="box">
+ * The diagram div's parent element should use `position: relative` to ensure the slider gets positioned properly.
+ *
+ * @constructor
+ * @class
+ * @param {Diagram} diagram the Diagram which the slider zooms in/out
+ * @param {Object} options the options for the slider
+ */
+function ZoomSlider(diagram, options) {
+    this._diagram = diagram;
+    this._initialScale = diagram.scale;
+    this._diagramDiv = diagram.div;
+    this._sliderDiv = null;
 
-	ansi "github.com/k0kubun/go-ansi"
-	"github.com/pterm/pterm"
-	"github.com/schollz/progressbar/v3"
-)
+    // Options defaults:
+    this._size = 125;
+    this._buttonSize = 25;
+    this._alignment = go.Spot.BottomRight;
+    this._alignmentFocus = go.Spot.BottomRight;
+    this._orientation = 'vertical';
+    this._opacity = .75;
 
-// Change this to time.Millisecond*200 to speed up the demo.
-// Useful when debugging.
-const second = time.Second
+    // Set properties based on options
+    if (options !== undefined) {
+        if (options['size'] !== undefined) this._size = options['size'];
+        if (options['buttonSize'] !== undefined) this._buttonSize = options['buttonSize'];
+        if (options['alignment'] !== undefined) this._alignment = options['alignment'];
+        if (options['alignmentFocus'] !== undefined) this._alignmentFocus = options['alignmentFocus'];
+        if (options['orientation'] !== undefined) this._orientation = options['orientation'];
+        if (options['opacity'] !== undefined) this._opacity = options['opacity'];
+    }
 
-var pseudoProgramList = strings.Split("pseudo-excel pseudo-photoshop pseudo-chrome pseudo-outlook pseudo-explorer "+
-	"pseudo-dops pseudo-git pseudo-vsc pseudo-intellij pseudo-minecraft pseudo-scoop pseudo-chocolatey", " ")
+    // Prepare change listeners
+    var self = this;
+    this.updateOnViewportBoundsChanged = function (e) { self.scaleToValue(); };
 
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
+    this.init();
 }
 
-func main() {
-	fmt.Println()
-	introScreen()
-	clear()
-	pseudoApplicationHeader()
-	time.Sleep(second)
-	//printParsingResult()
-	time.Sleep(second * 2)
-	pterm.DefaultSection.WithLevel(2).Println("Program Install Report")
-	installedProgramsSize()
-	time.Sleep(second * 4)
-	pterm.DefaultSection.Println("Tree Printer")
-	installedTree()
-	time.Sleep(second * 4)
-	pterm.DefaultSection.Println("TrueColor Support")
-	//go fadeText()
-	time.Sleep(second)
-	pterm.DefaultSection.Println("Bullet List Printer")
-	listPrinter()
+// Public properties
+
+/**
+ * This read-only property returns the diagram for which the slider is handling zoom.
+ * @name ZoomSlider#diagram
+
+ * @return {Diagram}
+ */
+Object.defineProperty(ZoomSlider.prototype, 'diagram', {
+    get: function() { return this._diagram; }
+});
+
+/**
+ * Gets or sets the overall length, in pixels, that the slider will occupy.
+ * The default value is 125.
+ * @name ZoomSlider#size
+
+ * @return {number}
+ */
+Object.defineProperty(ZoomSlider.prototype, 'size', {
+    get: function() { return this._size; },
+    set: function(val) {
+        var old = this._size;
+        if (old !== val) {
+            this._size = val;
+            this.resize();
+        }
+    }
+});
+
+/**
+ * Gets or sets the height/width of the buttons at each end of the slider.
+ * The default value is 25.
+ * @name ZoomSlider#buttonSize
+
+ * @return {number}
+ */
+Object.defineProperty(ZoomSlider.prototype, 'buttonSize', {
+    get: function() { return this._buttonSize; },
+    set: function(val) {
+        var old = this._buttonSize;
+        if (old !== val) {
+            this._buttonSize = val;
+            this.resize();
+        }
+    }
+});
+
+/**
+ * Gets or sets the alignment Spot of this slider to determine where it should be placed relative to the diagram.
+ * The default value is Spot.BottomRight.
+ * @name ZoomSlider#alignment
+
+ * @return {Spot}
+ */
+Object.defineProperty(ZoomSlider.prototype, 'alignment', {
+    get: function() { return this._alignment; },
+    set: function(val) {
+        var old = this._alignment;
+        if (old !== val) {
+            this._alignment = val;
+            this.realign();
+        }
+    }
+});
+
+/**
+ * Gets or sets the Spot on this slider to be used as the alignment point when placing it relative to the diagram.
+ * The default value is Spot.BottomRight.
+ * @name ZoomSlider#alignmentFocus
+
+ * @return {Spot}
+ */
+Object.defineProperty(ZoomSlider.prototype, 'alignmentFocus', {
+    get: function() { return this._alignmentFocus; },
+    set: function(val) {
+        var old = this._alignmentFocus;
+        if (old !== val) {
+            this._alignmentFocus = val;
+            this.realign();
+        }
+    }
+});
+
+/**
+ * Gets or sets whether the slider is oriented vertically or horizontally.
+ * Must be either 'horizontal' or 'vertical' and is case-sensitive.
+ * The default value is `'vertical'`.
+ * @name ZoomSlider#orientation
+
+ * @return {string}
+ */
+Object.defineProperty(ZoomSlider.prototype, 'orientation', {
+    get: function() { return this._orientation; },
+    set: function(val) {
+        if (val !== 'horizontal' && val !== 'vertical') {
+            throw new Error('Orientation must be "horizontal" or "vertical"');
+        }
+        var old = this._orientation;
+        if (old !== val) {
+            this._orientation = val;
+            this.resize(true);
+        }
+    }
+});
+
+/**
+ * Gets or sets the opacity of the slider.
+ * The default value is 0.75.
+ * @name ZoomSlider#opacity
+
+ * @return {Spot}
+ */
+Object.defineProperty(ZoomSlider.prototype, 'opacity', {
+    get: function() { return this._opacity; },
+    set: function(val) {
+        var old = this._opacity;
+        if (old !== val) {
+            this._opacity = val;
+            this._sliderDiv.style.opacity = val;
+        }
+    }
+});
+
+/**
+ * @ignore
+ * Initialize the slider.
+ * @this {ZoomSlider}
+ */
+ZoomSlider.prototype.init = function() {
+    // Sets up the slider div and inner div's basic attributes and ids
+    this.sliderDivSetup();
+    this.resize(true);
+
+    // Set up the runtime code
+    this.sliderListenerSetup();
+};
+
+/**
+ * @ignore
+ * Create the necessary divs for the slider and add the slider as a sibling of the diagram.
+ * @this {ZoomSlider}
+ */
+ZoomSlider.prototype.sliderDivSetup = function() {
+    this._sliderDiv = document.createElement('div');
+    this._sliderDiv.className = 'zoomSlider';
+
+    // Initialize buttons and range input
+    var zoomOutBtn = document.createElement('button');
+    zoomOutBtn.id = 'zoomSliderOut';
+    zoomOutBtn.className = 'zoomButton';
+    zoomOutBtn.innerHTML = '-';
+    this._sliderDiv.appendChild(zoomOutBtn);
+
+    var zoomRangeContainer = document.createElement('div');
+    zoomRangeContainer.id = 'zoomSliderRangeCtn';
+    zoomRangeContainer.className = 'zoomRangeContainer';
+    this._sliderDiv.appendChild(zoomRangeContainer);
+
+    var zoomRangeInput = document.createElement('input');
+    zoomRangeInput.id = 'zoomSliderRange';
+    zoomRangeInput.className = 'zoomRangeInput';
+    zoomRangeInput.type = 'range';
+    zoomRangeInput.min = -50;
+    zoomRangeInput.max = 100;
+    zoomRangeContainer.appendChild(zoomRangeInput);
+
+    var zoomInBtn = document.createElement('button');
+    zoomInBtn.id = 'zoomSliderIn';
+    zoomInBtn.className = 'zoomButton';
+    zoomInBtn.innerHTML = '+';
+    this._sliderDiv.appendChild(zoomInBtn);
+
+    // Adds the slider as a sibling of the diagram
+    // IMPORTANT: the diagram div's parent element should use position: relative
+    if (this._diagramDiv !== null) {
+        var diagramParent = this._diagramDiv.parentElement;
+        if (diagramParent !== null) {
+            diagramParent.appendChild(this._sliderDiv);
+        }
+    }
+};
+
+/**
+ * @ignore
+ * Add listeners to the buttons and range input.
+ * Add a diagram listener
+ * @this {ZoomSlider}
+ */
+ZoomSlider.prototype.sliderListenerSetup = function() {
+    var zoomOutBtn = document.getElementById('zoomSliderOut');
+    var zoomInBtn = document.getElementById('zoomSliderIn');
+    var zoomRangeInput = document.getElementById('zoomSliderRange');
+
+    if (zoomOutBtn === null || zoomInBtn === null || zoomRangeInput === null) return;
+
+    // Set up diagram listener so the slider can be kept in sync with the diagram's scale
+    this.diagram.addDiagramListener('ViewportBoundsChanged', this.updateOnViewportBoundsChanged);
+
+    // Set up event handlers for buttons and input range slider
+    var self = this;
+    zoomOutBtn.onclick = function() {
+        zoomRangeInput.stepDown();
+        self.valueToScale();
+    };
+
+    zoomInBtn.onclick = function() {
+        zoomRangeInput.stepUp();
+        self.valueToScale();
+    };
+
+    var valChanged = function() {
+        self.valueToScale();
+    };
+    zoomRangeInput.oninput = valChanged;
+    zoomRangeInput.onchange = valChanged;
+};
+
+/**
+ * @ignore
+ * Resize the slider.
+ * @this {ZoomSlider}
+ * @param {boolean} reorient whether or not to reorient the slider/buttons
+ */
+ZoomSlider.prototype.resize = function(reorient) {
+    var sliderWidth = 0;
+    var sliderHeight = 0;
+
+    var zoomOutBtn = document.getElementById('zoomSliderOut');
+    var zoomInBtn = document.getElementById('zoomSliderIn');
+    var zoomRangeContainer = document.getElementById('zoomSliderRangeCtn');
+    var zoomRangeInput = document.getElementById('zoomSliderRange');
+
+    if (this._sliderDiv === null || zoomOutBtn === null || zoomInBtn === null ||
+        zoomRangeContainer === null || zoomRangeInput === null) return;
+
+    if (this.orientation === 'horizontal') {
+        sliderWidth = this.size;
+        sliderHeight = this.buttonSize;
+        var rangeWidth = sliderWidth - sliderHeight * 2;
+
+        zoomOutBtn.style.width = sliderHeight + 'px';
+        zoomOutBtn.style.height = sliderHeight + 'px';
+
+        zoomRangeContainer.style.width = rangeWidth + 'px';
+        zoomRangeContainer.style.height = sliderHeight + 'px';
+
+        zoomRangeInput.style.width = rangeWidth + 'px';
+        zoomRangeInput.style.height = sliderHeight + 'px';
+        zoomRangeInput.style.transformOrigin = null;
+
+        zoomInBtn.style.width = sliderHeight + 'px';
+        zoomInBtn.style.height = sliderHeight + 'px';
+    } else {
+        sliderHeight = this.size;
+        sliderWidth = this.buttonSize;
+        var rangeHeight = sliderHeight - sliderWidth * 2;
+
+        zoomInBtn.style.width = sliderWidth + 'px';
+        zoomInBtn.style.height = sliderWidth + 'px';
+
+        zoomRangeContainer.style.width = sliderWidth + 'px';
+        zoomRangeContainer.style.height = rangeHeight + 'px';
+
+        zoomRangeInput.style.width = rangeHeight + 'px';
+        zoomRangeInput.style.height = sliderWidth + 'px';
+        zoomRangeInput.style.transformOrigin = rangeHeight / 2 + 'px ' + rangeHeight / 2 + 'px';
+
+        zoomOutBtn.style.width = sliderWidth + 'px';
+        zoomOutBtn.style.height = sliderWidth + 'px';
+    }
+    this._sliderDiv.style.width = sliderWidth + 'px';
+    this._sliderDiv.style.height = sliderHeight + 'px';
+
+    // Reorient the slider, if necessary
+    if (reorient) {
+        this.reorient();
+    }
+
+    // Realign based on new size
+    this.realign();
 }
 
-func installedTree() {
-	leveledList := pterm.LeveledList{
-		pterm.LeveledListItem{Level: 0, Text: "C:"},
-		pterm.LeveledListItem{Level: 1, Text: "Go"},
-		pterm.LeveledListItem{Level: 1, Text: "Windows"},
-		pterm.LeveledListItem{Level: 1, Text: "Programs"},
-	}
-	for _, s := range pseudoProgramList {
-		if s != "pseudo-minecraft" {
-			leveledList = append(leveledList, pterm.LeveledListItem{Level: 2, Text: s})
-		}
-		if s == "pseudo-chrome" {
-			leveledList = append(leveledList, pterm.LeveledListItem{Level: 3, Text: "pseudo-Tabs"})
-			leveledList = append(leveledList, pterm.LeveledListItem{Level: 3, Text: "pseudo-Extensions"})
-			leveledList = append(leveledList, pterm.LeveledListItem{Level: 4, Text: "Refined GitHub"})
-			leveledList = append(leveledList, pterm.LeveledListItem{Level: 4, Text: "GitHub Dark Theme"})
-			leveledList = append(leveledList, pterm.LeveledListItem{Level: 3, Text: "pseudo-Bookmarks"})
-			leveledList = append(leveledList, pterm.LeveledListItem{Level: 4, Text: "PTerm"})
-		}
-	}
+/**
+ * @ignore
+ * Reorient the slider, changing the transform and the order of the buttons within the div.
+ * @this {ZoomSlider}
+ */
+ZoomSlider.prototype.reorient = function() {
+    var zoomOutBtn = document.getElementById('zoomSliderOut');
+    var zoomInBtn = document.getElementById('zoomSliderIn');
+    var zoomRangeInput = document.getElementById('zoomSliderRange');
 
-	pterm.DefaultTree.WithRoot(pterm.NewTreeFromLeveledList(leveledList)).Render()
+    if (this._sliderDiv === null || zoomOutBtn === null || zoomInBtn === null || zoomRangeInput === null) return;
+
+    // Need to set the transform of the range input and move the buttons to the correct sides
+    if (this.orientation === 'horizontal') {
+        zoomRangeInput.style.transform = null;
+        this._sliderDiv.insertBefore(zoomOutBtn, this._sliderDiv.firstChild);
+        this._sliderDiv.appendChild(zoomInBtn);
+    } else {
+        zoomRangeInput.style.transform = 'rotate(-90deg)';
+        this._sliderDiv.insertBefore(zoomInBtn, this._sliderDiv.firstChild);
+        this._sliderDiv.appendChild(zoomOutBtn);
+    }
 }
 
-func printParsingResult() {
-	for _, v := range pseudoProgramList {
-		pterm.Success.Printf("Parsing %s\n", v)
-	}
+/**
+ * @ignore
+ * Realigns to slider relative to the diagram.
+ * @this {ZoomSlider}
+ */
+ZoomSlider.prototype.realign = function() {
+    if (this._diagramDiv === null || this._sliderDiv === null) return;
+
+    var sliderWidth = 0;
+    var sliderHeight = 0;
+    if (this.orientation === 'horizontal') {
+        sliderWidth = this.size;
+        sliderHeight = this.buttonSize;
+    } else {
+        sliderHeight = this.size;
+        sliderWidth = this.buttonSize;
+    }
+
+    // Finds the diagram and diagram's parent in the page
+    var diagramParent = this._diagramDiv.parentElement;
+    var diagramLoc = this._diagramDiv.getBoundingClientRect();
+    if (diagramParent !== null) {
+        var parentLoc = diagramParent.getBoundingClientRect();
+
+        var top = diagramLoc.top - parentLoc.top +
+            this.alignment.y * this._diagramDiv.clientHeight + this.alignment.offsetY -
+            this.alignmentFocus.y * sliderHeight + this.alignmentFocus.offsetY;
+
+        var left = diagramLoc.left - parentLoc.left +
+            this.alignment.x * this._diagramDiv.clientWidth + this.alignment.offsetX -
+            this.alignmentFocus.x * sliderWidth + this.alignmentFocus.offsetX;
+
+        this._sliderDiv.style.top = top + 'px';
+        this._sliderDiv.style.left = left + 'px';
+    }
 }
 
-func installingPseudoList() {
-	pterm.DefaultSection.Println("Installing pseudo programs")
-
-	p, _ := pterm.DefaultProgressbar.WithTotal(80).WithTitle("Parsing flow").Start()
-	p.RemoveWhenDone = true
-	for i := 0; i < 80; i++ {
-		time.Sleep(350 * time.Millisecond)
-		p.Add(1)
-	}
-	p.Stop()
+/**
+ * @ignore
+ * Update the value of the slider input to match the diagram's scale.
+ * @this {ZoomSlider}
+ */
+ZoomSlider.prototype.scaleToValue = function() {
+    var slider = document.getElementById('zoomSliderRange');
+    var diagram = this.diagram;
+    var A = this._initialScale;
+    var B = diagram.commandHandler.zoomFactor;
+    var y1 = diagram.scale;
+    slider.value = Math.round(Math.log(y1/A) / Math.log(B)).toString();
 }
 
-func listPrinter() {
-	pterm.NewBulletListFromString(`Good bye
-Have a nice day!`, " ").Render()
+/**
+ * @ignore
+ * Update the diagram's scale to match the value of the slider input.
+ * @this {ZoomSlider}
+ */
+ZoomSlider.prototype.valueToScale = function() {
+    var slider = document.getElementById('zoomSliderRange');
+    var diagram = this.diagram;
+    var x = parseFloat(slider.value);
+    var A = this._initialScale;
+    var B = diagram.commandHandler.zoomFactor;
+    diagram.scale = A * Math.pow(B, x);
 }
 
-func fadeText(str string) {
-	from := pterm.NewRGB(0, 255, 255) // This RGB value is used as the gradients start point.
-	to := pterm.NewRGB(255, 0, 255)   // This RGB value is used as the gradients first point.
+/**
+ * Remove the slider from the page.
+ * @this {ZoomSlider}
+ */
+ZoomSlider.prototype.remove = function() {
+    // Remove the listener attached to diagram
+    this.diagram.removeDiagramListener('ViewportBoundsChanged', this.updateOnViewportBoundsChanged);
 
-	//str := "If your terminal has TrueColor support, you can use RGB colors!\nYou can even fade them :)"
-	strs := strings.Split(str, "")
-	var fadeInfo string // String which will be used to print info.
-	// For loop over the range of the string length.
-	for i := 0; i < len(str); i++ {
-		// Append faded letter to info string.
-		fadeInfo += from.Fade(0, float32(len(str)), float32(i), to).Sprint(strs[i])
-	}
-	pterm.Info.Println(fadeInfo)
-}
-
-func installedProgramsSize() {
-	d := pterm.TableData{{"Upg Name", "Status", "Errors", "Dir", "Env"}}
-	for _, s := range pseudoProgramList {
-		if s != "pseudo-minecraft" {
-			d = append(d, []string{s, pterm.LightGreen("pass"), strconv.Itoa(randomInt(7, 200)) + "mb", "CSP", "Mec"})
-		} else {
-			d = append(d, []string{pterm.LightRed(s), pterm.LightRed("fail"), "0mb", "CSP", "Mec"})
-		}
-	}
-	pterm.DefaultTable.WithHasHeader().WithData(d).Render()
-}
-
-func pseudoApplicationHeader() *pterm.TextPrinter {
-	return pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgLightBlue)).WithMargin(10).Println(
-		"Pseudo Application created with PTerm")
-}
-
-func introScreen() {
-	pterm.DefaultBigText.WithLetters(
-		pterm.NewLettersFromStringWithStyle("F", pterm.NewStyle(pterm.FgLightBlue)),
-		pterm.NewLettersFromStringWithStyle("ct", pterm.NewStyle(pterm.FgLightMagenta))).
-		Render()
-
-	pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgLightBlue)).WithMargin(10).Println(
-		"FCT - Flow Check Tool")
-
-	fadeText("This project is made by w30003432!" +
-		"\nFct works on nearly every terminal and operating system." +
-		"\nIt's super easy to use!" +
-		"\nIf you have any suggestions, feedback is welcome :)" +
-		"\nYou can see the code of this project in the https://github.com/pterm/pterm/tree/master/_examples/demo." +
-		"\n" +
-		"\nThis latest version of this project is: v1.0.0")
-	pterm.Println()
-	//introSpinner, _ := pterm.DefaultSpinner.WithRemoveWhenDone(true).Start("Please waiting a moment...")
-	//go printParsingResult()
-	//installingPseudoList()
-	task()
-	//test1()
-	time.Sleep(2 * second)
-	for i := 14; i > 0; i-- {
-		time.Sleep(second)
-	}
-	//introSpinner.Stop()
-}
-
-func clear() {
-	print("\033[H\033[2J")
-}
-
-// Slice of strings with placeholder text.
-var fakeInstallList = strings.Split("pseudo-excel pseudo-photoshop pseudo-chrome pseudo-outlook pseudo-explorer "+
-	"pseudo-dops pseudo-git pseudo-vsc pseudo-intellij pseudo-minecraft pseudo-scoop pseudo-chocolatey", " ")
-
-func test1() {
-	// Create progressbar as fork from the default progressbar.
-	p, _ := pterm.DefaultProgressbar.WithTotal(len(fakeInstallList)).WithTitle("Downloading stuff").Start()
-
-	for i := 0; i < p.Total; i++ {
-		p.Title = "Downloading " + fakeInstallList[i]              // Update the title of the progressbar.
-		pterm.Success.Println("Downloading " + fakeInstallList[i]) // If a progressbar is running, each print will be printed above the progressbar.
-		p.Increment()                                              // Increment the progressbar by one. Use Add(x int) to increment by a custom amount.
-		time.Sleep(time.Millisecond * 350)                         // Sleep 350 milliseconds.
-	}
-}
-
-func task() {
-	bar := progressbar.NewOptions(100,
-		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowBytes(false),
-		progressbar.OptionSetWidth(15),
-		progressbar.OptionSetDescription("[Fct][0/100][reset] Writing moshable file..."),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}))
-	for i := 0; i < 100; i++ {
-		bar.Describe(fmt.Sprintf("[Fct][%d/100][reset] Writing moshable file...", i+1))
-		bar.Add(1)
-		time.Sleep(500 * time.Millisecond)
-	}
-}
-
-func randomInt(min, max int) int {
-	rand.Seed(time.Now().UnixNano())
-	return rand.Intn(max-min+1) + min
-}
-
+    if (this._sliderDiv !== null) {
+        this._sliderDiv.innerHTML = '';
+        if (this._sliderDiv.parentElement) {
+            this._sliderDiv.parentElement.removeChild(this._sliderDiv);
+        }
+        this._sliderDiv = null;
+    }
+};
