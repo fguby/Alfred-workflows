@@ -1,244 +1,32 @@
----
-title: Go Scheduler
-date: 2020-04-15 10:33:39
-categories: scheduler
-tags: Golang
-toc: true
-cover: http://www.midoriya.co/uPic/y9ITqg.jpg
----
-对Go调度器一些知识点的总结……
-<!--more-->
-
-## OS Scheduler
-从操作系统角度看，程序最终都会转换成一系列的机器指令，机器只要按顺序执行完所有的指令就算完成了任务。
-
-完成“按顺序执行指令”任务的实体就是线程，也就是说，线程是CPU调度的实体，是真正在CPU上执行指令的实体。
-
-## 线程切换
-OS Scheduler调度线程的依据就是它的状态，线程的三种状态：
-- Waiting 等待状态，线程在等待某件事的发生，例如等待网络数据、硬盘；调用操作系统API；等待内存同步访问条件ready，如atomic，mutexes
-- Runnable 就绪状态，只要给CPU资源就能运行
-- Executing 运行状态
-
-## 什么是goroutine
-Goroutine可以看作是对线程加的一层抽象，它更轻量级，可以单独执行，不是OS线程，也不是绿色线程（由语言的运行时管理的线程）。
-
-## goroutine和thread的区别
-可以从三个角度区别：内存消耗、创建与销毁、切换
-- 内存占用
-创建一个goroutine的栈内存消耗为2KB，实际运行过程中，如果栈空间不够用，会自动进行扩容。
-创建一个thread则需要消耗1MB栈内存。
-- 创建和销毁
-Thread创建和销毁都会有巨大的消耗，因为要和操作系统打交道，是内核级的，通常解决的办法就是线程池。而goroutine因为是由Go runtime负责管理的，创建和销毁的销毁非常小，是用户级。
-- 切换
-线程切换的时候，需要保存各种寄存器，以便将来恢复，goroutine的切换只需要保存三个寄存器：PC, SP, BP。
-
-## M:N模型
-Go runtime会负责Goroutine的生老病死，从创建到销毁，都一手包办。
-
-Runtime会在程序启动的时候，创建M个线程（CPU执行调度的单位），之后创建的N个goroutine都会依附在这M个线程上执行。
-
-在同一时刻，一个线程上只能跑一个goroutine，当goroutine发生阻塞时，runtime会把当前的goroutine调度走，让其他goroutine来执行。
-
-## Scheduler
-Runtime维护所有的goroutines，并通过scheduler来进行调度。
-
-有三个基础的结构体来实现goroutines的调度。
-
-::G::：代表一个goroutine
-::M::：表示内核线程，包含正在运行的goroutine等字段
-::P::：代表g执行的上下文环境，它维护一个处于Runable状态的G队列，M需要获得P才能运行G。
-
-![avatar](http://www.midoriya.co/uPic/1*QaG177Xaz7hHBaJSxSDjBA.png)
-
-每个Goroutine在OS线程上（M）运行。
-
-Runtime在运行时会启动一些G：垃圾回收的G，执行调度的G，运行用户代码的G；并且会创建一个M用来开始G的运行，随着时间推移，更多的G会被创建出来，更多的M也会被创建出来。
-
-GO Scheduler的核心思想就是:
-1. reuse threads;（复用线程）
-2. 限制同时运行的线程数为N，N等于CPU的核心数目；（N可以由GOMAXPROCS变量来决定）
-3. 线程私有的runqueues，并且可以从其他线程stealing goroutine来运行，线程阻塞后，可以将runqueues传递给其他线程。
-
-Go程序启动后，会给每个逻辑核心分配一个P，同时会给每个P分配一个M，内核线程依然由OS Scheduler来调度。
-
-## 具体流程
-假设一段代码如下：
-```
-func main() {
-   var wg sync.WaitGroup
-   wg.Add(2)
-
-   go func() {
-      println(`hello`)
-      wg.Done()
-   }()
-
-   go func() {
-      println(`world`)
-      wg.Done()
-   }()
-
-   wg.Wait()
-}
-```
-Go首先会根据逻辑CPU核心数创建不同的P，并且将这些P存储在一个空闲的P列表中。
-
-![avatar](http://www.midoriya.co/uPic/1*R8hPBHK-8aultosys9D8tQ.png)
-
-接下来，当有新的Goroutine或者是准备运行的Goroutine将唤醒P以更好地分配工作。
-
-这个P将创建一个关联的M（系统线程）：
-![1*CCguz8qrjngfk98HlTpcYA](http://www.midoriya.co/uPic/1*CCguz8qrjngfk98HlTpcYA.png)
-
-当遇到以下情况时P又会重新回到上面的空闲列表中：
-- 没有Goroutine准备或是等待运行
-- 从系统调用中返回
-- 被垃圾收集器停止（也就是所谓的STW，stop the world）
-
-在程序的启动期间，Go已经创建了一些OS线程和相关的M。
-
-
-### 系统调用
-Go通过将它们包装在runtime中来优化系统调用（无论是否阻塞），这个包装器将自动从线程M上分离出P并且允许另一个线程来运行它。
-以读取文件为例：
-```go
-func main（）{ 
-   buf：= make（[] byte，0，2）
-
-   fd，_：= os.Open（“number.txt”）
-   fd.Read（buf）
-   fd.Close（）
-
-   println（string（buf)）// 42 
-}
-```
-
-以下是打开文件时的工作流程：
-
-![1*l56efREv5Exm21lzNeKt_w](http://www.midoriya.co/uPic/1*l56efREv5Exm21lzNeKt_w.png)
-
-当主协程中执行os.Open()函数时，线程M0进入阻塞状态，p0回到空闲列表中并且处于可运行状态。
-
-然后，当系统调用退出，Go就会应用以下规则，直到可以满足：
-- 试图获得完全一样的P，p0在空闲列表中，可以继续执行
-- 尝试在空闲列表中获取一个p执行
-- 把Goroutine放到全局可运行队列中，并且将M放回空闲列表中
-
-但是在非阻塞IO（例如http调用）的情况下，Go还可以处理资源尚未准备就绪的情况。在这种情况下，由于资源尚未准备就绪，Go将使用网络轮询器将Goroutine停放。
-
-```go
-func main() {
-		http.Get(`https://httpstat.us/200`)
-}
-```
-
-一旦完成第一个系统调用并明确资源尚未准备就绪，goroutine将驻留，直到网络轮询器通知，在这种情况下，线程M将不会被阻塞。
-
-Go调度程序查找后，线程M将会运行另外一个Goroutine。
-
-如果准备了多个goroutine，则多余的goroutine将进入全局可运行队列，并在以后进行调度。
-
-## GRQ和LRQ
-全局可运行队列(GRQ)以及本地可运行队列(LRQ)
-
-LRQ存储本地（也就是具体的p）的可运行goroutine， GRQ存储全局的可运行goroutine，这些goroutine还没有分配到具体的p。
-
-## g0
-Go使用::GOMAXPROCS::环境变量来限制同时运行的OS线程数，这意味着Go必须在每个运行的线程上调度和管理Goroutine，该角色委托给了一个特殊的Goroutine，也就是::g0::，这是为每个OS线程创建的第一个Goroutine。
-
-![1*NK13K84tQhVx8DCPSXNG_g](http://www.midoriya.co/uPic/1*NK13K84tQhVx8DCPSXNG_g.png)
-
-随后，g0将安排就绪的Goroutine在线程上运行。
-
-### g0的职责
-和普通的Goroutine相反，g0具有确定的和更大的堆栈。
-它的职责包括：
-- Goroutine创建，使用go关键字的时候，Go会将函数创建委托到g0，然后将创建的Goroutine放置到本地队列中
-- 延迟功能分配
-- 垃圾收集器操作，例如STW，扫描goroutine的堆栈以及一些标记和清除操作
-- 堆栈增长，在需要时，Go会增加goroutine的大小，该操作也会通过g0来完成
-
-这种特殊的goroutine还涉及到许多其他操作（大分配，cgo等）。
-
-## goroutine调度代价
-在Go中，一个goroutine的切换确实很轻量级，为了保存goroutine，它只需要完成两件事：
-- goroutine在未调度之前停止的行，也就是保存当前要运行的行到PC寄存器中，稍后goroutine将在相同的地方恢复运行。
-- goroutine的堆栈，以便在再次运行时还原局部变量。
-
-假设有一段这样的代码：
-![1*TZobNBH4mKyaN8B_ru7tUA](http://www.midoriya.co/uPic/1*TZobNBH4mKyaN8B_ru7tUA.png)
-消费者会打印从0到99的偶数。
-
-首先，关注一下第一个goroutine（生产者），它将数字添加到channel的缓冲区中，当缓冲区被填满，当它再次发送数据时将会被阻塞。这个时候，Go将会切换到g0并且调度另外一个goroutine。
-
-Go首先需要保存当前指令，以便在同一条指令中恢复goroutine，PC保存在goroutine的内部结构中，示例图如下。
-
-![1*ArVyzi31WBefg4RhhX5Pdw](http://www.midoriya.co/uPic/1*ArVyzi31WBefg4RhhX5Pdw.png)
-
-指令以及地址可以使用以下命令查找:
-```shell
-go tool objdump
-```
-
-![9888D7A2-E02B-4A9C-8897-A81A760F7247](http://www.midoriya.co/uPic/9888D7A2-E02B-4A9C-8897-A81A760F7247.png)
-
-![1*E9HFNIw4ZhDirUh4dgWbsw](http://www.midoriya.co/uPic/1*E9HFNIw4ZhDirUh4dgWbsw.png)
-
-在通道阻塞之前（runtime.chansend1），程序逐步执行指令，Go保存当前的PC寄存器为当前goroutine的一个内部属性.
-在上图的例子中，Go通过内存地址`0x4268d0`保存PC寄存器，它在runtime和函数runtime.chansend1的内部。
-
-![1*i1SaUH3K7pjijTtW-O1TKw](http://www.midoriya.co/uPic/1*i1SaUH3K7pjijTtW-O1TKw.png)
-
-接下来，当g0唤醒goroutine，它将恢复到相同的指令处，执行循环，将值传入通道。
-
-## goroutine调度期间的堆栈管理
-在被阻塞之前，正在运行的goroutine具有原来的堆栈，这个堆栈包含临时的内存，例如变量`i`：
-
-![1*8oa7ziZBpHZqKVihpQ3b8g](http://www.midoriya.co/uPic/1*8oa7ziZBpHZqKVihpQ3b8g.png)
-
-然后，当它在channel上被阻塞的时候，goroutine以及堆栈都将被切换成g0以及g0的堆栈，一个更大的堆栈，如图。
-
-![1*I42dKDU2BV6kTwWMWiA1JQ](http://www.midoriya.co/uPic/1*I42dKDU2BV6kTwWMWiA1JQ.png)
-
-在切换之前，这个堆栈将被保存起来用以goroutine再次运行时恢复。
-![1*kmufEth8mfd7OLnkl9oC7Q](http://www.midoriya.co/uPic/1*kmufEth8mfd7OLnkl9oC7Q.png)
-
-需要注意的是，一些架构例如arm，需要保存更多的寄存器：LR（连接寄存器）。
-
-## goroutine切换总结
-以上图中的channel为例：
-- 当goroutine在channel上阻塞并且切换到了g0
-	1. PC寄存器与堆栈指针一起保存到内部结构中
-	2. g0被设置为运行协程
-	3. g0的堆栈替换当前堆栈
-- g0正在寻找新的goroutine运行
-- g0必须使用选定的goroutine进行切换：
-	1. 从内部结构中提取出PC寄存器和堆栈指针
-	2. 程序跳转到从PC中提取出来的地址
-
-## goroutine调度时机
-- 使用关键字go
-创建一个新的goroutine，Go Scheduler会考虑调度。
-::新创建的Goroutine优先运行，并放置在LRQ的顶部::
-- GC
-由于进行GC的goroutine也需要在M上运行，因此肯定会发生调度。
-- 系统调用
-当goroutine进行系统调用时，会阻塞M，所以它会被调度走，同时一个新的goroutine会被调度上来
-- 内存同步访问
-atomic，mutex，channel操作等会使goroutine阻塞，因此会被调度走。
-
-此外，需要注意，在调度期间，LRQ（本地队列）具有优先级。
-
-## work stealing
-Go Scheduler的职责就是将所有处于Runnable的goroutines均匀分布到在p上运行的M。
-
-当P的LRQ里没有goroutine时，它会先去全局队列里（GRQ）和网络轮询器中查看，如果这两者都为空，它将从其他P那里窃取goroutine。
-
-TODO
-
-## 参考文章
-[Scheduling In Go : Part III - Concurrency](https://www.ardanlabs.com/blog/2018/12/scheduling-in-go-part3.html)
-[Go: Goroutine, OS Thread and CPU Management - A Journey With Go - Medium](https://medium.com/a-journey-with-go/go-goroutine-os-thread-and-cpu-management-2f5a5eaf518a)
-[Go: g0, Special Goroutine - A Journey With Go - Medium](https://medium.com/a-journey-with-go/go-g0-special-goroutine-8c778c6704d8)
-
+[config]
+# eid, fp参数必须填写，具体请参考 wiki-常见问题
+# 随意填写可能导致订单无法提交等问题
+eid = "WW2EBX4FMAEKYTFX3L5NWHBMBGFOS6S7MT6OADZ6RBLBTHOW7I26KIRZDXFLWCIHVUYHOL7HA6YA24UVEINVDUW3EU"
+fp = "c7518f7f207cebe436859f94c5c9e63d"
+# cookie现在不需要填写了
+# cookies_String = ""
+
+# 商品id
+# 已经是茅台的sku_id了
+sku_id = 100012043978
+# 设定时间 # 2020-12-09 10:00:00.100000
+buy_time = 2020-12-30 09:59:59.500
+# 默认UA
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36"
+# 是否使用随机 useragent，默认为 false
+random_useragent = false
+
+[account]
+# 支付密码
+# 如果你的账户中有可用的京券（注意不是东券）或 在上次购买订单中使用了京豆，
+# 那么京东可能会在下单时自动选择京券支付 或 自动勾选京豆支付。
+# 此时下单会要求输入六位数字的支付密码。请在下方配置你的支付密码，如 123456 。
+# 如果没有上述情况，下方请留空。
+payment_pwd = "659309"
+
+[messenger]
+# 使用了Server酱的推送服务
+# 如果想开启下单成功后消息推送，则将 enable 设置为 true，默认为 false 不开启推送
+# 开启消息推送必须填入 sckey，如何获取请参考 http://sc.ftqq.com/3.version。感谢Server酱～
+enable =true
+sckey =SCU141259Te6b960619429356384d499343930dfcf5feb44213a1c1
